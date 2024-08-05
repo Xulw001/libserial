@@ -1,5 +1,7 @@
 #include "master.h"
 
+#include "log/log.h"
+
 namespace protocol {
 
 const uint16_t frame_size = 0x1000;
@@ -34,6 +36,7 @@ void Master::SendFrame(uint8_t* data, int size) {
         frame_.SendFrame(buffer, len);
         pos += offset;
     }
+    qInfo << "send data len = " << size;
 }
 
 void Master::SetRecviverhandler(MessageReceivedHandler serial_receiver, void* param) {
@@ -47,6 +50,7 @@ bool Master::DefaultRecviverHandler(void* parameter, uint8_t* msg, int size, boo
     buffer_.insert(buffer_.end(), msg, msg + size);
     if (!more) {
         serial_receiver_(parameter, buffer_.data(), (int)buffer_.size());
+        qInfo << "recv data len = " << buffer_.size();
         buffer_.clear();
     }
     return true;

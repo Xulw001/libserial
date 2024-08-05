@@ -9,6 +9,7 @@
 
 #include "crc/crc.h"
 #include "endian.h"
+#include "log/log.h"
 
 namespace protocol {
 
@@ -56,6 +57,7 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
     uint8_t* content = 0;
     int len = 0;
     if (msg[0] == cImark) {
+        qDebug << "recv I frame!";
         if (*(uint16_t*)&msg[1] != *(uint16_t*)&msg[3]) {
             return;
         }
@@ -70,10 +72,12 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
         len = msg_size;
         crc_flg = 16;
     } else if (msg[0] == cUmark) {
+        qDebug << "recv U frame!";
         content = msg + 1;
         len = 1;
         crc_flg = 8;
     } else if (msg[0] == cAmark) {
+        qDebug << "recv Ack frame!";
         crc_flg = 0;
     } else {
         return;
@@ -84,6 +88,7 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
         case 8: {
             uint8_t checksum = crc::crc8(content, len);
             if (checksum != msg[size - 2]) {
+                qDebug << "checksum failed!";
                 return;
             }
 
@@ -97,6 +102,7 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
         case 16: {
             uint16_t checksum = crc::crc16(content, len);
             if (checksum != cint16(msg[size - 3], msg[size - 2])) {
+                qDebug << "checksum failed!";
                 return;
             }
 
@@ -123,6 +129,7 @@ bool Frame::Run() {
 
                 uint8_t ack = cAmark;
                 frame_handler_.SendSingleMessage(&ack, 1);
+                qDebug << "send Ack frame!";
 
             } else {
                 switch (buffer[1]) {
@@ -138,6 +145,7 @@ bool Frame::Run() {
                     default:
                         break;
                 }
+                qDebug << "send U confirmed frame!";
             }
             frame_state = STATE_RECEIVE_CONGIRMED;
         } break;
@@ -190,8 +198,10 @@ bool Frame::HandleTimeout() {
     uint64_t currentTime = Hal_getTimeInMs();
     if (currentTime > next_heart_timeout_) {
         if (no_confirm_msg_ > 2) {  // testfr frame not confirm
+            qWarning << "heart timeout overflow!";
             return false;
         } else {  // send frame to testfr
+            qDebug << "send heart again!";
             frame_handler_.SendSingleMessage(TESTFR_ACT_MSG, FIXED_MSG_SIZE);
             ResetTimeout();
             no_confirm_msg_++;
@@ -201,6 +211,7 @@ bool Frame::HandleTimeout() {
     if (next_alive_timeout_ != 0) {
         // testfr frame not confirm along with alive time
         if (currentTime > next_alive_timeout_) {
+            qWarning << "heart timeout with alive!";
             return false;
         }
     }
@@ -211,7 +222,7 @@ bool Frame::HandleTimeout() {
         if (it->state == STATE_SENDED && currentTime > it->send_time) {
             // data frame not confirm along with alive time
             if (currentTime - msg_queue_.begin()->send_time >= (uint64_t)apci_parameters_.time_alive * 1000) {
-                frame_handler_.SendSingleMessage(msg_queue_.begin()->data, msg_queue_.begin()->size);
+                qDebug << "I frame timeout with alive!";
                 return false;
             }
         }
@@ -235,6 +246,7 @@ void Frame::SendSingleMessage() {
             it->state = STATE_SENDED;
             it->send_time = Hal_getTimeInMs();
         }
+        qDebug << "send I frame!";
     }
 }
 
