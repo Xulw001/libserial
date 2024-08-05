@@ -43,8 +43,7 @@ Frame::Frame(SerialPortBase* serial_connection) : Frame(serial_connection, defau
 
 Frame::Frame(SerialPortBase* serial_connection, const APCIParameters apci_parameters)
     : frame_handler_(serial_connection), apci_parameters_(apci_parameters) {
-    next_heart_timeout_ = 0;
-    next_alive_timeout_ = 0;
+    ResetTimeout();
     no_confirm_msg_ = 0;
 }
 
