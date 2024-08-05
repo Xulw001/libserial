@@ -174,7 +174,7 @@ int SerialPortLinux::Write(uint8_t* buffer, int length) {
 
     ssize_t result = write(serial_fd_, buffer, length);
 
-    tcdrain(serial_fd_);
+    // tcdrain(serial_fd_);
 
     return result;
 }
