@@ -13,27 +13,26 @@
 
 namespace protocol {
 
-enum LayerState { STATE_IDLE,
-                  STATE_SENDED,
-                  STATE_SEND_CONGIRMED,
-                  STATE_RECEIVED,
-                  STATE_RECEIVE_CONGIRMED };
+enum MsgState { STATE_IDLE,
+                STATE_SENDED,
+                STATE_SEND_CONGIRMED,
+};
 
 #define MAX_SIZE 0x4000
 struct sMsg {
-    LayerState state;
+    MsgState state;
     uint64_t send_time;
     int size;
     uint8_t data[MAX_SIZE];
 };
 
 #define FIXED_MSG_SIZE 4
-static uint8_t STARTDT_ACT_MSG[] = {cUmark, 0x4, 0x1c, cEmark};
-static uint8_t STARTDT_CON_MSG[] = {cUmark, 0x8, 0x38, cEmark};
-static uint8_t STOPDT_ACT_MSG[] = {cUmark, 0x10, 0x70, cEmark};
-static uint8_t STOPDT_CON_MSG[] = {cUmark, 0x20, 0xe0, cEmark};
-static uint8_t TESTFR_ACT_MSG[] = {cUmark, 0x40, 0xc7, cEmark};
-static uint8_t TESTFR_CON_MSG[] = {cUmark, 0x80, 0x89, cEmark};
+static uint8_t STARTDT_ACT_MSG[] = {cUmark, START, 0x1c, cEmark};
+static uint8_t STARTDT_CON_MSG[] = {cUmark, STARTC, 0x38, cEmark};
+static uint8_t STOPDT_ACT_MSG[] = {cUmark, STOP, 0x70, cEmark};
+static uint8_t STOPDT_CON_MSG[] = {cUmark, STOPC, 0xe0, cEmark};
+static uint8_t TESTFR_ACT_MSG[] = {cUmark, TESTFR, 0xc7, cEmark};
+static uint8_t TESTFR_CON_MSG[] = {cUmark, TESTFRC, 0x89, cEmark};
 
 APCIParameters default_apci_parameters = {
     /* .time_alive = */ 15,
@@ -50,8 +49,6 @@ Frame::Frame(SerialPortBase* serial_connection, const APCIParameters apci_parame
 Frame::~Frame() { msg_queue_.clear(); }
 
 void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
-    LayerState* state = (LayerState*)parameter;
-
     int crc_flg = 0;
     uint8_t* content = 0;
     int len = 0;
@@ -92,11 +89,6 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
             }
 
             /* U-frame ACK */
-            if (msg[1] == 0x8 || msg[1] == 0x20 || msg[1] == 0x80) {
-                (*state) = STATE_SEND_CONGIRMED;
-            } else {
-                (*state) = STATE_RECEIVED;
-            }
         } break;
         case 16: {
             uint16_t checksum = crc::crc16(content, len);
@@ -105,59 +97,68 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
                 return;
             }
 
-            (*state) = STATE_RECEIVED;
         } break;
         default:
-            (*state) = STATE_SEND_CONGIRMED;
             break;
     }
 }
 
 bool Frame::Run() {
     uint8_t buffer[MAX_SIZE];
-    LayerState frame_state = STATE_IDLE;
-    frame_handler_.ReadNextMessage(buffer, Frame::MessageHandler, &frame_state);
-    switch (frame_state) {
-        case STATE_RECEIVED: {
-            if (buffer[0] == cImark) {
-                if (serial_receiver_) {
-                    uint16_t msg_size = cint16(buffer[1], buffer[2]);
-                    serial_receiver_(serial_receiver_parameter_, buffer + cIHeaderLength, msg_size & 0x7fff,
-                                     msg_size >> 0xF);
-                }
-
-                uint8_t ack = cAmark;
-                frame_handler_.SendSingleMessage(&ack, 1);
-                qDebug << "send Ack frame!";
-
-            } else {
-                switch (buffer[1]) {
-                    case 0x4:
-                        frame_handler_.SendSingleMessage(STARTDT_CON_MSG, FIXED_MSG_SIZE);
-                        break;
-                    case 0x10:
-                        frame_handler_.SendSingleMessage(STOPDT_CON_MSG, FIXED_MSG_SIZE);
-                        break;
-                    case 0x40:
-                        frame_handler_.SendSingleMessage(TESTFR_CON_MSG, FIXED_MSG_SIZE);
-                        break;
-                    default:
-                        break;
-                }
-                qDebug << "send U confirmed frame!";
+    frame_handler_.ReadNextMessage(buffer, Frame::MessageHandler, nullptr);
+    switch (buffer[0]) {
+        /* handle u-frame */
+        case cUmark:
+            switch (buffer[1]) {
+                case START:
+                    frame_handler_.SendSingleMessage(STARTDT_CON_MSG, FIXED_MSG_SIZE);
+                    qDebug << "confirmed start frame!";
+                    break;
+                case STOP:
+                    frame_handler_.SendSingleMessage(STOPDT_CON_MSG, FIXED_MSG_SIZE);
+                    qDebug << "confirmed stop frame!";
+                    break;
+                case TESTFR:
+                    frame_handler_.SendSingleMessage(TESTFR_CON_MSG, FIXED_MSG_SIZE);
+                    qDebug << "confirmed test frame!";
+                    break;
+                case STOPC:
+                case STARTC: {
+                    qDebug << "recv start/stop confirmed frame!";
+                    std::lock_guard<std::mutex> lock(queue_mutex_);
+                    auto it = msg_queue_.begin();
+                    if (it->data[1] == (buffer[1] >> 1)) {
+                        msg_queue_.erase(msg_queue_.begin());
+                    }
+                } break;
+                case TESTFRC:
+                    qDebug << "recv test confirmed frame!";
+                    ResetTimeout();
+                    no_confirm_msg_ = 0;
+                    break;
+                default:
+                    break;
             }
-            frame_state = STATE_RECEIVE_CONGIRMED;
+            break;
+        /* handle i-frame */
+        case cImark: {
+            if (serial_receiver_) {
+                uint16_t msg_size = cint16(buffer[1], buffer[2]);
+                serial_receiver_(serial_receiver_parameter_, buffer + cIHeaderLength, msg_size & 0x7fff,
+                                 msg_size >> 0xF);
+            }
+
+            uint8_t ack = cAmark;
+            frame_handler_.SendSingleMessage(&ack, 1);
+            qDebug << "send Ack frame!";
         } break;
-        case STATE_SEND_CONGIRMED: {
+        /* handle ack */
+        case cAmark: {
             std::lock_guard<std::mutex> lock(queue_mutex_);
-            if (no_confirm_msg_) {
-                ResetTimeout();
-                no_confirm_msg_ = 0;
-            } else if (msg_queue_.size() && msg_queue_.begin()->state == STATE_SENDED) {
+            if (msg_queue_.size() && msg_queue_.begin()->state == STATE_SENDED) {
                 msg_queue_.erase(msg_queue_.begin());
             }
         } break;
-        case STATE_IDLE:
         default:
             break;
     }

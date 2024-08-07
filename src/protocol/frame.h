@@ -16,12 +16,12 @@ struct APCIParameters {
     int time_heart;
 };
 
-enum UFrame { START,
-              STARTC,
-              STOP,
-              STOPC,
-              TESTFR,
-              TESTFRC };
+enum UFrame { START = 0x4,
+              STARTC = 0x8,
+              STOP = 0x10,
+              STOPC = 0x20,
+              TESTFR = 0x40,
+              TESTFRC = 0x80 };
 
 class Frame {
    public:
