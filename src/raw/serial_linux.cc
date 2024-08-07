@@ -173,6 +173,11 @@ int SerialPortLinux::Write(uint8_t* buffer, int length) {
     }
 
     ssize_t result = write(serial_fd_, buffer, length);
+    if (result < 0) {
+        if (errno == EIO) {
+            last_error_ = SERIAL_PORT_ERROR_IO_FAILED;
+        }
+    }
 
     // tcdrain(serial_fd_);
 
