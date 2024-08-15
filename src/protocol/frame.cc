@@ -27,8 +27,10 @@ struct sMsg {
 };
 
 #define FIXED_MSG_SIZE 4
-static uint8_t STARTDT_ACT_MSG[] = {cUmark, START, 0x1c, cEmark};
-static uint8_t STARTDT_CON_MSG[] = {cUmark, STARTC, 0x38, cEmark};
+static uint8_t STARTDT_ACT_MSG[] = {cUmark, START, 0x7, cEmark};
+static uint8_t STARTDT_CON_MSG[] = {cUmark, STARTC, 0xe, cEmark};
+static uint8_t RESETDT_ACT_MSG[] = {cUmark, RESET, 0x1c, cEmark};
+static uint8_t RESETDT_CON_MSG[] = {cUmark, RESETC, 0x38, cEmark};
 static uint8_t STOPDT_ACT_MSG[] = {cUmark, STOP, 0x70, cEmark};
 static uint8_t STOPDT_CON_MSG[] = {cUmark, STOPC, 0xe0, cEmark};
 static uint8_t TESTFR_ACT_MSG[] = {cUmark, TESTFR, 0xc7, cEmark};
@@ -115,6 +117,10 @@ bool Frame::Run() {
                     frame_handler_.SendSingleMessage(STARTDT_CON_MSG, FIXED_MSG_SIZE);
                     qDebug << "confirmed start frame!";
                     break;
+                case RESET:
+                    frame_handler_.SendSingleMessage(RESETDT_CON_MSG, FIXED_MSG_SIZE);
+                    qDebug << "confirmed reset frame!";
+                    break;
                 case STOP:
                     frame_handler_.SendSingleMessage(STOPDT_CON_MSG, FIXED_MSG_SIZE);
                     qDebug << "confirmed stop frame!";
@@ -124,8 +130,9 @@ bool Frame::Run() {
                     qDebug << "confirmed test frame!";
                     break;
                 case STOPC:
-                case STARTC: {
-                    qDebug << "recv start/stop confirmed frame!";
+                case STARTC:
+                case RESETC: {
+                    qDebug << "recv U confirmed frame!";
                     std::lock_guard<std::mutex> lock(queue_mutex_);
                     auto it = msg_queue_.begin();
                     if (it->data[1] == (buffer[1] >> 1)) {
@@ -138,13 +145,16 @@ bool Frame::Run() {
                 default:
                     break;
             }
+            if (u_handler_) {
+                u_handler_((UFrame)buffer[1]);
+            }
+
             break;
         /* handle i-frame */
         case cImark: {
-            if (serial_receiver_) {
+            if (i_handler_) {
                 uint16_t msg_size = cint16(buffer[1], buffer[2]);
-                serial_receiver_(serial_receiver_parameter_, buffer + cIHeaderLength, msg_size & 0x7fff,
-                                 msg_size >> 0xF);
+                i_handler_(buffer + cIHeaderLength, msg_size & 0x7fff, msg_size >> 0xF);
             }
 
             uint8_t ack = cAmark;
@@ -225,7 +235,7 @@ bool Frame::HandleTimeout() {
         if (it->state == STATE_SENDED && currentTime > it->send_time) {
             // data frame not confirm along with alive time
             if (currentTime - msg_queue_.begin()->send_time >= (uint64_t)apci_parameters_.time_alive * 1000) {
-                qDebug << "I frame timeout with alive!";
+                qWarning << "I frame timeout with alive!";
                 return false;
             }
         }
@@ -263,6 +273,12 @@ int Frame::PrepareUFrame(UFrame type, uint8_t* frame_data) {
             break;
         case STARTC:
             memcpy(frame_data, STARTDT_CON_MSG, FIXED_MSG_SIZE);
+            break;
+        case RESET:
+            memcpy(frame_data, RESETDT_ACT_MSG, FIXED_MSG_SIZE);
+            break;
+        case RESETC:
+            memcpy(frame_data, RESETDT_CON_MSG, FIXED_MSG_SIZE);
             break;
         case STOP:
             memcpy(frame_data, STOPDT_ACT_MSG, FIXED_MSG_SIZE);

@@ -9,19 +9,22 @@
 
 namespace protocol {
 
-typedef std::function<bool(void*, uint8_t*, int, bool)> SerialReceivedHandler;
-
 struct APCIParameters {
     float time_alive;
     float time_heart;
 };
 
-enum UFrame { START = 0x4,
-              STARTC = 0x8,
+enum UFrame { START = 0x1,
+              STARTC = 0x2,
+              RESET = 0x4,
+              RESETC = 0x8,
               STOP = 0x10,
               STOPC = 0x20,
               TESTFR = 0x40,
               TESTFRC = 0x80 };
+
+typedef std::function<bool(UFrame)> UFrameHandler;
+typedef std::function<bool(uint8_t*, int, bool)> IFrameHandler;
 
 class Frame {
    public:
@@ -29,12 +32,16 @@ class Frame {
     Frame(SerialPortBase* serial_connection, const APCIParameters apci_parameters);
     ~Frame();
 
-    /// @brief Register a callback handler for received
+    /// @brief Register a callback handler for received i frame
     /// @param serial_receiver user provided callback handler function
-    /// @param param user provided parameter that is passed to the callback handler
-    void SetRecviverhandler(SerialReceivedHandler serial_receiver, void* param) {
-        serial_receiver_ = serial_receiver;
-        serial_receiver_parameter_ = param;
+    void SetIFrameHandler(IFrameHandler serial_receiver) {
+        i_handler_ = serial_receiver;
+    }
+
+    /// @brief Register a callback handler for received u frame
+    /// @param serial_receiver user provided callback handler function
+    void SetUFrameHandler(UFrameHandler serial_receiver) {
+        u_handler_ = serial_receiver;
     }
 
     /// @brief Receive a new message and run the protocol state machine(s).
@@ -92,8 +99,8 @@ class Frame {
     std::mutex queue_mutex_;
 
    private:
-    SerialReceivedHandler serial_receiver_;
-    void* serial_receiver_parameter_;
+    IFrameHandler i_handler_;
+    UFrameHandler u_handler_;
 };
 
 };  // namespace protocol

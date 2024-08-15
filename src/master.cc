@@ -15,6 +15,14 @@ void Master::StartDT() {
     }
 }
 
+void Master::ResetDT() {
+    uint8_t frame[256];
+    int len = Frame::PrepareUFrame(RESET, frame);
+    if (len) {
+        frame_.SendFrame(frame, len);
+    }
+}
+
 void Master::StopDT() {
     uint8_t frame[256];
     int len = Frame::PrepareUFrame(STOP, frame);
@@ -36,28 +44,60 @@ void Master::SendFrame(uint8_t* data, int size) {
         frame_.SendFrame(buffer, len);
         pos += offset;
     }
-    qInfo << "send data len = " << size;
+    qDebug << "send data len = " << size;
 }
 
-void Master::SetRecviverhandler(MessageReceivedHandler serial_receiver, void* param) {
+void Master::SetRecviverHandler(MessageReceivedHandler serial_receiver) {
     serial_receiver_ = serial_receiver;
-    auto callback = std::bind(&Master::DefaultRecviverHandler, this, std::placeholders::_1, std::placeholders::_2,
-                              std::placeholders::_3, std::placeholders::_4);
-    frame_.SetRecviverhandler(callback, param);
 }
 
-bool Master::DefaultRecviverHandler(void* parameter, uint8_t* msg, int size, bool more) {
+void Master::SetConnectionHandler(ConnectionEventHandler handler) {
+    connection_ev_handler_ = handler;
+}
+
+bool Master::ConnectionHandler(UFrame frame) {
+    if (connection_ev_handler_) {
+        switch (frame) {
+            case START:
+                connection_ev_handler_(CONNECTION_STARTDT);
+                break;
+            case STARTC:
+                connection_ev_handler_(CONNECTION_STARTDT_CONFIRMED);
+                break;
+            case RESET:
+                connection_ev_handler_(CONNECTION_RESETDT);
+                break;
+            case RESETC:
+                connection_ev_handler_(CONNECTION_RESETDT_CONFIRMED);
+                break;
+            case STOP:
+                connection_ev_handler_(CONNECTION_STOPDT);
+                break;
+            case STOPC:
+                connection_ev_handler_(CONNECTION_STOPDT_CONFIRMED);
+                break;
+            default:
+                break;
+        }
+    }
+    return true;
+}
+
+bool Master::DefaultRecviverHandler(uint8_t* msg, int size, bool more) {
     buffer_.insert(buffer_.end(), msg, msg + size);
     if (!more) {
-        serial_receiver_(parameter, buffer_.data(), (int)buffer_.size());
-        qInfo << "recv data len = " << buffer_.size();
+        serial_receiver_(buffer_.data(), (int)buffer_.size());
+        qDebug << "recv data len = " << buffer_.size();
         buffer_.clear();
     }
     return true;
 }
 
 void Master::Start() {
-    if (!running_) {
+    if (!work_.joinable()) {
+        frame_.SetIFrameHandler(std::bind(&Master::DefaultRecviverHandler, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+        frame_.SetUFrameHandler(std::bind(&Master::ConnectionHandler, this, std::placeholders::_1));
+
         buffer_.reserve(frame_limit);
         work_ = std::thread(&Master::MainThread, this);
     }
@@ -67,9 +107,11 @@ void Master::Stop() {
     if (running_) {
         running_ = false;
     }
+
     if (work_.joinable()) {
         work_.join();
     }
+
     buffer_.clear();
     buffer_.shrink_to_fit();
 }
@@ -78,7 +120,11 @@ void Master::MainThread() {
     running_ = true;
     while (running_) {
         if (!frame_.Run()) {
-            running_ = false;
+            if (connection_ev_handler_) {
+                running_ = connection_ev_handler_(CONNECTION_BROKEN);
+            } else {
+                running_ = false;
+            }
         }
     }
 }

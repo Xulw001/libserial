@@ -8,7 +8,17 @@
 
 namespace protocol {
 
-typedef std::function<bool(void*, uint8_t*, int)> MessageReceivedHandler;
+enum ConnectionEvent { CONNECTION_STARTDT,
+                       CONNECTION_STARTDT_CONFIRMED,
+                       CONNECTION_RESETDT,
+                       CONNECTION_RESETDT_CONFIRMED,
+                       CONNECTION_STOPDT,
+                       CONNECTION_STOPDT_CONFIRMED,
+                       CONNECTION_BROKEN,
+};
+
+typedef std::function<bool(ConnectionEvent)> ConnectionEventHandler;
+typedef std::function<bool(uint8_t*, int)> MessageReceivedHandler;
 
 class Master {
    public:
@@ -24,16 +34,22 @@ class Master {
 
     void StartDT();
 
+    void ResetDT();
+
     void StopDT();
 
     void SendFrame(uint8_t* data, int size);
 
-    void SetRecviverhandler(MessageReceivedHandler serial_receiver, void* param);
+    void SetConnectionHandler(ConnectionEventHandler handler);
+
+    void SetRecviverHandler(MessageReceivedHandler serial_receiver);
 
    private:
     void MainThread();
 
-    bool DefaultRecviverHandler(void* parameter, uint8_t* msg, int size, bool more);
+    bool DefaultRecviverHandler(uint8_t* msg, int size, bool more);
+
+    bool ConnectionHandler(UFrame frame);
 
     void Store(uint8_t* data, int size);
 
@@ -44,6 +60,7 @@ class Master {
     bool running_;
     std::thread work_;
     MessageReceivedHandler serial_receiver_;
+    ConnectionEventHandler connection_ev_handler_;
     std::vector<uint8_t> buffer_;
 };
 
