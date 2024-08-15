@@ -167,8 +167,10 @@ bool Frame::Run() {
         ;  // TODO reconnect
     }
 
-    if (msg_queue_.size() && !no_confirm_msg_) {
-        SendSingleMessage();
+    if (msg_queue_.size()) {
+        if (!SendSingleMessage()) {
+            return false;
+        }
     }
 
     return true;
@@ -201,7 +203,8 @@ bool Frame::HandleTimeout() {
             return false;
         } else {  // send frame to testfr
             qDebug << "send heart again!";
-            frame_handler_.SendSingleMessage(TESTFR_ACT_MSG, FIXED_MSG_SIZE);
+            if (!frame_handler_.SendSingleMessage(TESTFR_ACT_MSG, FIXED_MSG_SIZE))
+                return false;
             ResetTimeout();
             no_confirm_msg_++;
         }
@@ -229,16 +232,18 @@ void Frame::SendFrame(uint8_t* data, int size) {
     msg_queue_.emplace_back(frame);
 }
 
-void Frame::SendSingleMessage() {
+bool Frame::SendSingleMessage() {
     std::lock_guard<std::mutex> lock(queue_mutex_);
     auto it = msg_queue_.begin();
     if (it->state == STATE_IDLE) {
-        if (frame_handler_.SendSingleMessage(it->data, it->size)) {
-            it->state = STATE_SENDED;
-            it->send_time = Hal_getTimeInMs();
+        if (!frame_handler_.SendSingleMessage(it->data, it->size)) {
+            return false;
         }
+        it->state = STATE_SENDED;
+        it->send_time = Hal_getTimeInMs();
         qDebug << "send I frame!";
     }
+    return true;
 }
 
 int Frame::PrepareUFrame(UFrame type, uint8_t* frame_data) {

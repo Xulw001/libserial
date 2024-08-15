@@ -76,7 +76,7 @@ class Frame {
     bool HandleTimeout();
 
     /// @brief Send the first frame in msg queue
-    void SendSingleMessage();
+    bool SendSingleMessage();
 
    private:
     Layer frame_handler_;
