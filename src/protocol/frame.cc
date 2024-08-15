@@ -191,7 +191,6 @@ static uint64_t Hal_getTimeInMs() {
 
 void Frame::ResetTimeout() {
     next_heart_timeout_ = Hal_getTimeInMs() + (uint64_t)apci_parameters_.time_heart * 1000;
-    next_alive_timeout_ = Hal_getTimeInMs() + (uint64_t)apci_parameters_.time_alive * 1000;
 }
 
 bool Frame::HandleTimeout() {
@@ -205,14 +204,6 @@ bool Frame::HandleTimeout() {
             frame_handler_.SendSingleMessage(TESTFR_ACT_MSG, FIXED_MSG_SIZE);
             ResetTimeout();
             no_confirm_msg_++;
-        }
-    }
-
-    if (next_alive_timeout_ != 0) {
-        // testfr frame not confirm along with alive time
-        if (currentTime > next_alive_timeout_) {
-            qWarning << "heart timeout with alive!";
-            return false;
         }
     }
 

@@ -12,8 +12,8 @@ namespace protocol {
 typedef std::function<bool(void*, uint8_t*, int, bool)> SerialReceivedHandler;
 
 struct APCIParameters {
-    int time_alive;
-    int time_heart;
+    float time_alive;
+    float time_heart;
 };
 
 enum UFrame { START = 0x4,
@@ -84,7 +84,6 @@ class Frame {
 
    private:
     uint64_t next_heart_timeout_;
-    uint64_t next_alive_timeout_;
     int no_confirm_msg_;
 
    private:
