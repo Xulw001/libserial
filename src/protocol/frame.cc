@@ -106,6 +106,7 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
 bool Frame::Run() {
     uint8_t buffer[MAX_SIZE];
     frame_handler_.ReadNextMessage(buffer, Frame::MessageHandler, nullptr);
+    bool alive = true;
     switch (buffer[0]) {
         /* handle u-frame */
         case cUmark:
@@ -133,8 +134,6 @@ bool Frame::Run() {
                 } break;
                 case TESTFRC:
                     qDebug << "recv test confirmed frame!";
-                    ResetTimeout();
-                    no_confirm_msg_ = 0;
                     break;
                 default:
                     break;
@@ -160,17 +159,27 @@ bool Frame::Run() {
             }
         } break;
         default:
+            alive = false;
             break;
     }
 
-    if (!HandleTimeout()) {
-        ;  // TODO reconnect
+    // when receive any frame, reset next heart time
+    if (alive) {
+        ResetTimeout();
+        no_confirm_msg_ = 0;
     }
 
     if (msg_queue_.size()) {
         if (!SendSingleMessage()) {
             return false;
         }
+    }
+
+    if (!HandleTimeout()) {
+        ResetTimeout();
+        no_confirm_msg_ = 0;
+        msg_queue_.clear();
+        return false;
     }
 
     return true;
