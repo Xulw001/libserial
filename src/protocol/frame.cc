@@ -104,7 +104,7 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
 }
 
 bool Frame::Run() {
-    uint8_t buffer[MAX_SIZE];
+    uint8_t buffer[MAX_SIZE] = {0};
     frame_handler_.ReadNextMessage(buffer, Frame::MessageHandler, nullptr);
     bool alive = true;
     switch (buffer[0]) {
