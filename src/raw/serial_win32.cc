@@ -155,10 +155,14 @@ int SerialPortWin::Write(uint8_t* buffer, int length) {
         return -1;
     }
 
-    DWORD numberOfBytesWritten;
+    DWORD numberOfBytesWritten = 0;
     BOOL status = WriteFile(serial_handle_, buffer, length, &numberOfBytesWritten, NULL);
     if (status == false) {
-        last_error_ = SERIAL_PORT_ERROR_UNKNOWN;
+        if (ERROR_BAD_COMMAND == GetLastError()) {
+            last_error_ = SERIAL_PORT_ERROR_IO_FAILED;
+        } else {
+            last_error_ = SERIAL_PORT_ERROR_UNKNOWN;
+        }
         return -1;
     }
 
