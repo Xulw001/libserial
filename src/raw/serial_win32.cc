@@ -158,10 +158,15 @@ int SerialPortWin::Write(uint8_t* buffer, int length) {
     DWORD numberOfBytesWritten = 0;
     BOOL status = WriteFile(serial_handle_, buffer, length, &numberOfBytesWritten, NULL);
     if (status == false) {
-        if (ERROR_BAD_COMMAND == GetLastError()) {
-            last_error_ = SERIAL_PORT_ERROR_IO_FAILED;
-        } else {
-            last_error_ = SERIAL_PORT_ERROR_UNKNOWN;
+        switch (::GetLastError()) {
+            case ERROR_BAD_COMMAND:
+                last_error_ = SERIAL_PORT_ERROR_IO_FAILED;
+                break;
+            case ERROR_SEM_TIMEOUT:
+                break;
+            default:
+                last_error_ = SERIAL_PORT_ERROR_UNKNOWN;
+                break;
         }
         return -1;
     }
