@@ -16,10 +16,9 @@ enum LEVLE {
 
 class Logger {
    public:
-    ~Logger() { ; }
+    void init_logger(LEVLE level = Info, std::string filepath = "");
 
-    inline void init_logger(LEVLE level) { level_ = level; }
-
+    ~Logger();
     Logger &operator()(LEVLE level);
     Logger &operator<<(const std::wstring &data);
     Logger &operator<<(const wchar_t *data);
@@ -33,12 +32,9 @@ class Logger {
     }
 
    private:
-    std::ostream *ofstream_ = nullptr;
-#ifndef _DEBUG
     LEVLE level_ = Info;
-#else
-    LEVLE level_ = Debug;
-#endif
+    std::ostream *ofstream_ = nullptr;
+    bool stdout_ = false;
     bool flag = false;
 };
 
