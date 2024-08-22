@@ -44,8 +44,7 @@ Frame::Frame(SerialPortBase* serial_connection) : Frame(serial_connection, defau
 
 Frame::Frame(SerialPortBase* serial_connection, const APCIParameters apci_parameters)
     : frame_handler_(serial_connection), apci_parameters_(apci_parameters) {
-    ResetTimeout();
-    no_confirm_msg_ = 0;
+    ResetAll();
 }
 
 Frame::~Frame() { msg_queue_.clear(); }
@@ -57,17 +56,19 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
     if (msg[0] == cImark) {
         qDebug << "recv I frame!";
         if (*(uint16_t*)&msg[1] != *(uint16_t*)&msg[3]) {
+            qWarning << "frame size miss!";
             return;
         }
 
         /* check if message size is reasonable */
         uint16_t msg_size = (cint16(msg[1], msg[2])) & 0x7fff;
         if (size != msg_size + cIFixedLength) {
+            qWarning << "frame size miss!";
             return;
         }
 
         content = msg + cIHeaderLength;
-        len = msg_size;
+        len = msg_size + 2;
         crc_flg = 16;
     } else if (msg[0] == cUmark) {
         qDebug << "recv U frame!";
@@ -86,7 +87,7 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
         case 8: {
             uint8_t checksum = crc::crc8(content, len);
             if (checksum != msg[size - 2]) {
-                qDebug << "checksum failed!";
+                qWarning << "frame checksum error!";
                 return;
             }
 
@@ -95,7 +96,7 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
         case 16: {
             uint16_t checksum = crc::crc16(content, len);
             if (checksum != cint16(msg[size - 3], msg[size - 2])) {
-                qDebug << "checksum failed!";
+                qWarning << "frame checksum error!";
                 return;
             }
 
@@ -119,6 +120,8 @@ bool Frame::Run() {
                     break;
                 case RESET:
                     frame_handler_.SendSingleMessage(RESETDT_CON_MSG, FIXED_MSG_SIZE);
+                    recv_frame_no_ = 0;
+                    send_frame_no_ = 1;
                     qDebug << "confirmed reset frame!";
                     break;
                 case STOP:
@@ -152,20 +155,35 @@ bool Frame::Run() {
             break;
         /* handle i-frame */
         case cImark: {
-            if (i_handler_) {
-                uint16_t msg_size = cint16(buffer[1], buffer[2]);
-                i_handler_(buffer + cIHeaderLength, msg_size & 0x7fff, msg_size >> 0xF);
+            uint16_t recv_frame_no = *(uint16_t*)(buffer + cIHeaderLength);
+            if (recv_frame_no_ > recv_frame_no) {
+                qError << "frame number error!";
+                ResetAll();
+                return false;
+            } else if (recv_frame_no_ < recv_frame_no) {
+                if (i_handler_) {
+                    uint16_t msg_size = cint16(buffer[1], buffer[2]);
+                    i_handler_(buffer + cIDataOffset, msg_size & 0x7fff,
+                               msg_size >> 0xF);
+                }
+                recv_frame_no_ = recv_frame_no % 0xffff;
             }
 
-            uint8_t ack = cAmark;
-            frame_handler_.SendSingleMessage(&ack, 1);
-            qDebug << "send Ack frame!";
+            if (!frame_handler_.SendSingleMessage((uint8_t*)&cAmark, 1)) {
+                ResetAll();
+                return false;
+            }
+            qDebug << "send Ack frame at " << recv_frame_no_;
         } break;
         /* handle ack */
         case cAmark: {
             std::lock_guard<std::mutex> lock(queue_mutex_);
             if (msg_queue_.size() && msg_queue_.begin()->state == STATE_SENDED) {
                 msg_queue_.erase(msg_queue_.begin());
+                if (send_frame_no_ >= 0xffff) {
+                    send_frame_no_ = 0;
+                }
+                send_frame_no_++;
             }
         } break;
         default:
@@ -181,18 +199,25 @@ bool Frame::Run() {
 
     if (msg_queue_.size()) {
         if (!SendSingleMessage()) {
+            ResetAll();
             return false;
         }
     }
 
     if (!HandleTimeout()) {
-        ResetTimeout();
-        no_confirm_msg_ = 0;
-        msg_queue_.clear();
+        ResetAll();
         return false;
     }
 
     return true;
+}
+
+void Frame::ResetAll() {
+    ResetTimeout();
+    no_confirm_msg_ = 0;
+    send_frame_no_ = 1;
+    recv_frame_no_ = 0;
+    msg_queue_.clear();
 }
 
 static uint64_t Hal_getTimeInMs() {
@@ -211,14 +236,14 @@ static uint64_t Hal_getTimeInMs() {
 }
 
 void Frame::ResetTimeout() {
-    next_heart_timeout_ = Hal_getTimeInMs() + (uint64_t)apci_parameters_.time_heart * 1000;
+    next_heart_timeout_ = Hal_getTimeInMs() + (uint64_t)(apci_parameters_.time_heart * 1000);
 }
 
 bool Frame::HandleTimeout() {
     uint64_t currentTime = Hal_getTimeInMs();
     if (currentTime > next_heart_timeout_) {
         if (no_confirm_msg_ > 2) {  // testfr frame not confirm
-            qWarning << "heart timeout overflow!";
+            qError << "heart timeout overflow!";
             return false;
         } else {  // send frame to testfr
             qDebug << "send heart again!";
@@ -234,9 +259,12 @@ bool Frame::HandleTimeout() {
         auto it = msg_queue_.begin();
         if (it->state == STATE_SENDED && currentTime > it->send_time) {
             // data frame not confirm along with alive time
-            if (currentTime - msg_queue_.begin()->send_time >= (uint64_t)apci_parameters_.time_alive * 1000) {
-                qWarning << "I frame timeout with alive!";
-                return false;
+            if (currentTime - it->send_time >= (uint64_t)(apci_parameters_.time_alive * 1000)) {
+                if (!frame_handler_.SendSingleMessage(it->data, it->size))
+                    return false;
+                qWarning << "i frame send unconfirmed!";
+                it->send_time = currentTime;
+                return true;
             }
         }
     }
@@ -255,12 +283,22 @@ bool Frame::SendSingleMessage() {
     std::lock_guard<std::mutex> lock(queue_mutex_);
     auto it = msg_queue_.begin();
     if (it->state == STATE_IDLE) {
+        if (it->data[0] == cImark) {
+            uint8_t* frame_data = it->data;
+            memcpy(frame_data + cIHeaderLength, &send_frame_no_, sizeof(uint16_t));
+            uint16_t crc_size = it->size - cIFixedLength + 2;
+            uint16_t check_sum = crc::crc16(frame_data + cIHeaderLength, crc_size);
+            memcpy(frame_data + cIHeaderLength + crc_size, &check_sum, sizeof(uint16_t));
+            qDebug << "send I frame at " << send_frame_no_;
+        } else {
+            qDebug << "send U frame!";
+        }
+
         if (!frame_handler_.SendSingleMessage(it->data, it->size)) {
             return false;
         }
         it->state = STATE_SENDED;
         it->send_time = Hal_getTimeInMs();
-        qDebug << "send I frame!";
     }
     return true;
 }
@@ -307,9 +345,7 @@ int Frame::PrepareIFrame(uint8_t* data, int size, uint8_t* frame_data, bool more
         memcpy(frame_data + 1, &mark_size, sizeof(uint16_t));
         memcpy(frame_data + 3, &mark_size, sizeof(uint16_t));
         frame_data[5] = cImark;
-        memcpy(frame_data + cIHeaderLength, data, size);
-        uint16_t check_sum = crc::crc16(data, size);
-        memcpy(frame_data + cIHeaderLength + size, &check_sum, sizeof(uint16_t));
+        memcpy(frame_data + cIDataOffset, data, size);
         frame_data[size + cIFixedLength - 1] = 0x10;
         return size + cIFixedLength;
     }

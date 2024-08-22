@@ -67,11 +67,21 @@ bool ConnectionEventHandler(protocol::ConnectionEvent ev) {
                 std::cout << "connection broken!" << std::endl;
                 exit(-1);
             }
-            if (master_) {
-                g_master_->StartDT();
-                g_master_->ResetDT();
+
+            if (g_serial_->is_open()) {
+                g_serial_->Close();
             }
-            return true;
+
+            if (g_serial_->Open()) {
+                g_serial_->Discard();
+                if (master_) {
+                    g_master_->StartDT();
+                    g_master_->ResetDT();
+                    std::cout << "retry connected!" << std::endl;
+                }
+                return true;
+            }
+
         case protocol::CONNECTION_STARTDT:
             break;
         case protocol::CONNECTION_STARTDT_CONFIRMED:
@@ -146,7 +156,7 @@ int main(int argc, char** argvs) {
         // 清除缓存
         serial.Discard();
         // 主从站实例
-        protocol::Master master(&serial, {1.5, 5});
+        protocol::Master master(&serial, {5, 8});
         g_master_ = &master;
         // 绑定接收回调
         master.SetRecviverHandler(ReceivedHandler);
@@ -162,6 +172,7 @@ int main(int argc, char** argvs) {
             // 停止数据传输
             master.StopDT();
         } else {
+            master.ResetDT();
             Slave(master);
         }
         // 停止串口监听

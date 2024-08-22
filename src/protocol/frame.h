@@ -85,6 +85,8 @@ class Frame {
     /// @brief Send the first frame in msg queue
     bool SendSingleMessage();
 
+    void ResetAll();
+
    private:
     Layer frame_handler_;
     APCIParameters apci_parameters_;
@@ -92,6 +94,8 @@ class Frame {
    private:
     uint64_t next_heart_timeout_;
     int no_confirm_msg_;
+    int send_frame_no_;
+    int recv_frame_no_;
 
    private:
     typedef struct sMsg Msg;

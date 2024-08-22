@@ -18,7 +18,8 @@ const uint8_t cAmark = 0xe5;
 const uint8_t cEmark = 0x10;
 
 const uint8_t cIHeaderLength = 0x6;
-const uint8_t cIFixedLength = 0x9;
+const uint8_t cIDataOffset = 0x8;
+const uint8_t cIFixedLength = 0xB;
 const uint8_t cUFixedLength = 0x4;
 
 class Layer {
