@@ -10,8 +10,10 @@ bool Layer::SendSingleMessage(uint8_t* msg, int size) {
         return false;
     }
 
-    if (serial_connection_->Write(msg, size) > 0) {
-        return true;
+    if (serial_connection_->Write((uint8_t*)&cBmark, 1) > 0) {
+        if (serial_connection_->Write(msg, size) > 0) {
+            return true;
+        }
     }
 
     return false;
@@ -39,6 +41,12 @@ void Layer::ReadNextMessage(uint8_t* buffer, SerialMessageHandler message_handle
     serial_connection_->SetTimeout(message_timeout_);
 
     int read = serial_connection_->ReadByte();
+    if (read != cBmark) {
+        serial_connection_->Discard();
+        return;
+    }
+
+    read = serial_connection_->ReadByte();
     if (read != -1) {
         if (read == cImark) {
             serial_connection_->SetTimeout(character_timeout_);

@@ -11,6 +11,7 @@ using raw::SerialPortBase;
 
 typedef std::function<void(void*, uint8_t*, int)> SerialMessageHandler;
 
+const uint8_t cBmark = 0xAA;
 const uint8_t cImark = 0x96;
 const uint8_t cUmark = 0x38;
 const uint8_t cAmark = 0xe5;
