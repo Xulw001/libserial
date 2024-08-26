@@ -40,7 +40,8 @@ class Layer {
     /// @param buffer buffer to store the received data
     /// @param message_handler provided callback handler function
     /// @param parameter provided parameter that is passed to the callback handler
-    void ReadNextMessage(uint8_t* buffer, SerialMessageHandler message_handler, void* parameter);
+    /// @return true in case of success, false otherwise
+    bool ReadNextMessage(uint8_t* buffer, SerialMessageHandler message_handler, void* parameter);
 
    private:
     /// @brief Read data from serial until count

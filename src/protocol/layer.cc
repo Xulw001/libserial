@@ -32,10 +32,10 @@ int Layer::ReadBytesWithTimeout(uint8_t* buffer, int count) {
     return bytes;
 }
 
-void Layer::ReadNextMessage(uint8_t* buffer, SerialMessageHandler message_handler, void* parameter) {
+bool Layer::ReadNextMessage(uint8_t* buffer, SerialMessageHandler message_handler, void* parameter) {
     if (!serial_connection_->is_open() &&
         !serial_connection_->Open()) {
-        return;
+        return false;
     }
 
     serial_connection_->SetTimeout(message_timeout_);
@@ -43,7 +43,7 @@ void Layer::ReadNextMessage(uint8_t* buffer, SerialMessageHandler message_handle
     int read = serial_connection_->ReadByte();
     if (read != cBmark) {
         serial_connection_->Discard();
-        return;
+        return false;
     }
 
     read = serial_connection_->ReadByte();
@@ -55,7 +55,7 @@ void Layer::ReadNextMessage(uint8_t* buffer, SerialMessageHandler message_handle
             int h_size = serial_connection_->ReadByte();
             if (l_size == -1 || h_size == -1) {
                 serial_connection_->Discard();
-                return;
+                return false;
             }
 
             int msg_size = (cint16(l_size, h_size)) & 0x7fff;
@@ -68,6 +68,7 @@ void Layer::ReadNextMessage(uint8_t* buffer, SerialMessageHandler message_handle
             if (bytes == msg_size) {
                 msg_size += 3;
                 message_handler(parameter, buffer, msg_size);
+                return true;
             }
 
         } else if (read == cUmark) {
@@ -79,18 +80,20 @@ void Layer::ReadNextMessage(uint8_t* buffer, SerialMessageHandler message_handle
             if (bytes == msg_size) {
                 msg_size += sizeof(cUmark);
                 message_handler(parameter, buffer, msg_size);
+                return true;
             }
         } else if (read == cAmark) {
             buffer[0] = cAmark;
             int msg_size = sizeof(cAmark);
 
             message_handler(parameter, buffer, msg_size);
+            return true;
         } else {
             serial_connection_->Discard();
         }
     }
 
-    return;
+    return false;
 }
 
 }  // namespace protocol

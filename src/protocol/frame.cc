@@ -108,8 +108,7 @@ void Frame::MessageHandler(void* parameter, uint8_t* msg, int size) {
 
 bool Frame::Run() {
     uint8_t buffer[MAX_SIZE] = {0};
-    frame_handler_.ReadNextMessage(buffer, Frame::MessageHandler, nullptr);
-    bool alive = true;
+    bool alive = frame_handler_.ReadNextMessage(buffer, Frame::MessageHandler, nullptr);
     switch (buffer[0]) {
         /* handle u-frame */
         case cUmark:
@@ -187,7 +186,6 @@ bool Frame::Run() {
             }
         } break;
         default:
-            alive = false;
             break;
     }
 
