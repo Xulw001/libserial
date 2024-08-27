@@ -1,5 +1,7 @@
 #include "layer.h"
 
+#include <memory>
+
 #include "endian.h"
 
 namespace protocol {
@@ -10,10 +12,11 @@ bool Layer::SendSingleMessage(uint8_t* msg, int size) {
         return false;
     }
 
-    if (serial_connection_->Write((uint8_t*)&cBmark, 1) > 0) {
-        if (serial_connection_->Write(msg, size) > 0) {
-            return true;
-        }
+    std::unique_ptr<uint8_t[]> buffer(new uint8_t[size + 2]);
+    memcpy(buffer.get(), &cBmark, sizeof(cBmark));
+    memcpy(buffer.get() + 1, msg, size);
+    if (serial_connection_->Write(buffer.get(), size + 1) > 0) {
+        return true;
     }
 
     return false;
