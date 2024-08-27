@@ -42,23 +42,25 @@ bool Layer::ReadNextMessage(uint8_t* buffer, SerialMessageHandler message_handle
     }
 
     serial_connection_->SetTimeout(message_timeout_);
+    do {
+        int read = serial_connection_->ReadByte();
+        if (read < 0)
+            break;
 
-    int read = serial_connection_->ReadByte();
-    if (read != cBmark) {
-        serial_connection_->Discard();
-        return false;
-    }
+        if (read != cBmark)
+            continue;
 
-    read = serial_connection_->ReadByte();
-    if (read != -1) {
+        read = serial_connection_->ReadByte();
+        if (read < 0)
+            break;
+
         if (read == cImark) {
             serial_connection_->SetTimeout(character_timeout_);
 
             int l_size = serial_connection_->ReadByte();
             int h_size = serial_connection_->ReadByte();
             if (l_size == -1 || h_size == -1) {
-                serial_connection_->Discard();
-                return false;
+                continue;
             }
 
             int msg_size = (cint16(l_size, h_size)) & 0x7fff;
@@ -85,16 +87,13 @@ bool Layer::ReadNextMessage(uint8_t* buffer, SerialMessageHandler message_handle
                 message_handler(parameter, buffer, msg_size);
                 return true;
             }
+
         } else if (read == cAmark) {
             buffer[0] = cAmark;
-            int msg_size = sizeof(cAmark);
-
-            message_handler(parameter, buffer, msg_size);
+            message_handler(parameter, buffer, (int)sizeof(cAmark));
             return true;
-        } else {
-            serial_connection_->Discard();
         }
-    }
+    } while (true);
 
     return false;
 }

@@ -160,8 +160,10 @@ int SerialPortLinux::ReadByte() {
     }
 
     uint8_t buf[1];
-    read(serial_fd_, (char*)buf, 1);
-    return (int)buf[0];
+    if (read(serial_fd_, (char*)buf, 1) > 0) {
+        return (int)buf[0];
+    }
+    return -1;
 }
 
 int SerialPortLinux::Write(uint8_t* buffer, int length) {
