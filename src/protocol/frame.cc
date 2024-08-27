@@ -120,7 +120,6 @@ bool Frame::Run() {
                 case RESET:
                     frame_handler_.SendSingleMessage(RESETDT_CON_MSG, FIXED_MSG_SIZE);
                     recv_frame_no_ = 0;
-                    send_frame_no_ = 1;
                     qDebug << "confirmed reset frame!";
                     break;
                 case STOP:
